@@ -16,7 +16,6 @@ clean_count <- function(w){
   return(w + (w == 0) )
 }
 
-
 library(terra)
 library(sf)
 
@@ -47,7 +46,7 @@ for(yr in 1981:2013){
   row.names(deer_den_that_year) <- deer_den_that_year$U
   dmu_that_year$SAKD <- deer_den_that_year[as.data.frame(dmu_that_year)[,
                                                          ifelse(yr<2002,"UNIT_ID","DEER_MGMT_")
-                                                         ],"SAKD"]
+                                                         ],"SAKD"]/2.58999 # convert to km2
   
   deer_rastername <- sub("1981",yr,deer_rastername_)
   
@@ -62,6 +61,39 @@ for(yr in 1981:2013){
     cat(yr,"error\n")
   }
 }
+
+## after 2013 ## 
+deer_den <- read.csv("./deer_data/DMU_deer_density_2002-2020.csv")
+deer_den$U <- sub("( Forest| Farmlandf)", "", deer_den$DMU)
+deer_den <- aggregate(cbind(SAKN,DR)~YR+U, FUN = sum, data = deer_den)
+deer_den$SAKD <- deer_den$SAKN/deer_den$DR
+
+
+for(yr in 2014:2020){
+  yr_idx <- yr-1980
+  dmu_that_year <- st_read(dmu_all[yr_idx],quiet = TRUE)
+  deer_den_that_year <- deer_den[deer_den$YR==yr,]
+  row.names(deer_den_that_year) <- deer_den_that_year$U
+  dmu_col_name <- ifelse(yr<2018, ifelse(yr<2002,"UNIT_ID","DEER_MGMT_"), "DMU")
+  
+  dmu_that_year$SAKD <- deer_den_that_year[as.data.frame(dmu_that_year)[,dmu_col_name],"SAKD"]/2.58999 # convert to km2
+  
+  deer_rastername <- sub("1981",yr,deer_rastername_)
+  
+  deer_raster <- tryCatch( {rasterize(dmu_that_year, basemap, 
+                                      field = "SAKD", 
+                                      filename = deer_rastername, overwrite=TRUE)},
+                           error = function(e){list()}
+  )
+  if("SpatRaster" %in% class(deer_raster)){
+    plot(deer_raster,main = yr)
+  } else{
+    cat(yr,"error\n")
+  }
+}
+
+
+
 
 ##### deal with wolves ##### 
 # sub("(\\+|-).*","","2+") regex for changing winter count to its lower bound
@@ -105,7 +137,7 @@ for(yr in year_focus){
                                       background = 0)},
                            error = function(e){list()}
   )
-  if("SpatRaster" %in% class(deer_raster)){
+  if("SpatRaster" %in% class(wolf_raster)){
     wolf_raster <- mask(wolf_raster, dmu_base,filename = wolf_rastername, overwrite=TRUE)
     plot(wolf_raster,main = yr)
   } else{
